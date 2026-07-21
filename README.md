@@ -1,7 +1,7 @@
 # claude-oss-skills
 
 A set of practical Claude Code runbooks for developing public open-source
-projects on resource-constrained hardware. Seven manually-invoked skills cover
+projects on resource-constrained hardware. Eight manually-invoked skills cover
 the workflow from an empty directory to a deployed release, and two advisory
 hooks keep execution cost low. Skills regulate code quality and execution cost;
 hooks advise on individual Bash commands
@@ -62,6 +62,10 @@ claude-oss-skills/
 │   │   ├── SKILL.md
 │   │   ├── references/
 │   │   └── templates/
+│   ├── implementation-integrity/
+│   │   ├── SKILL.md
+│   │   ├── references/
+│   │   └── templates/
 │   ├── public-code-review/
 │   │   ├── SKILL.md
 │   │   ├── references/
@@ -86,7 +90,7 @@ readable and loads detail only when a branch needs it
 
 ## Skills
 
-The seven skills form a path from an empty directory to a deployed release. Run
+The eight skills form a path from an empty directory to a deployed release. Run
 the one that matches the task; none activate on their own
 
 - **oss-bootstrap** - Prepares a new or nearly empty repository into a clean
@@ -103,6 +107,9 @@ the one that matches the task; none activate on their own
   the smallest fix
 - **dependency-review** - Evaluates a proposed dependency and ends with a
   single decision: add, do not add, or defer pending evidence
+- **implementation-integrity** - Audits whether an implementation satisfies the
+  task through the real product path without unnecessary artifacts, manipulated
+  validation, hardcoded shortcuts, or fake success
 - **public-code-review** - Reviews a diff or file set as public code across
   quality, repository safety, privacy and provenance, onboarding, and
   maintainability
@@ -110,6 +117,15 @@ the one that matches the task; none activate on their own
   detected deployment target's path (GitHub repo, static site or Pages, Docker,
   Node or Python service, Archestra app, MCP server, or package registry),
   never publishing, tagging, pushing, or deploying without explicit intent
+
+### Integrity versus public review
+
+- `/implementation-integrity` checks task fidelity and implementation honesty:
+  did the work go through the real product path, with only necessary artifacts
+  and evidence that supports the completion claims
+- `/public-code-review` checks whether the repository is safe, truthful,
+  maintainable, and ready for public release
+- Neither skill is a complete security proof
 
 ### Migrating from /release-check
 
@@ -325,7 +341,8 @@ DEST=".claude"
 #    -e misses broken symlinks, so -L is also checked.
 for rel in skills/oss-bootstrap skills/oss-plan skills/implement-minimal \
            skills/test-and-debug skills/dependency-review \
-           skills/public-code-review skills/release-deploy \
+           skills/implementation-integrity skills/public-code-review \
+           skills/release-deploy \
            hooks/filter-command-output.sh hooks/block-expensive-command.sh \
            shared/LOW_RESOURCE.md; do
     if [ -e "$DEST/$rel" ] || [ -L "$DEST/$rel" ]; then
@@ -361,7 +378,8 @@ SRC="$(pwd)"
 
 rels="skills/oss-bootstrap skills/oss-plan skills/implement-minimal \
       skills/test-and-debug skills/dependency-review \
-      skills/public-code-review skills/release-deploy \
+      skills/implementation-integrity skills/public-code-review \
+      skills/release-deploy \
       hooks/filter-command-output.sh hooks/block-expensive-command.sh \
       shared/LOW_RESOURCE.md"
 
@@ -395,7 +413,7 @@ existing `settings.json` or `settings.local.json` with the example file
 ## Manual activation
 
 - Skills are discovered from `.claude/skills/` or `~/.claude/skills/`. All
-  seven skills set `disable-model-invocation: true`, so they are procedural
+  eight skills set `disable-model-invocation: true`, so they are procedural
   workflows that you invoke manually by command; Claude does not activate them
   automatically:
 
@@ -405,6 +423,7 @@ existing `settings.json` or `settings.local.json` with the example file
   /implement-minimal
   /test-and-debug
   /dependency-review
+  /implementation-integrity
   /public-code-review
   /release-deploy
   ```
@@ -436,6 +455,7 @@ tests, no watch mode, and full validation only at milestone boundaries
 - Start a feature: run `/oss-plan`, review the plan, then `/implement-minimal`
 - When a test or build breaks: run `/test-and-debug`
 - Before adding a package: run `/dependency-review`
+- After implementing and debugging: run `/implementation-integrity`
 - Before merging: run `/public-code-review`
 - Before publishing or deploying: run `/release-deploy`
 
@@ -467,14 +487,14 @@ an `if` filter yourself only if your Claude Code version supports them
 
 Remove the copied files. Review each path first and adjust `.claude` to
 `$HOME/.claude` for a user-level install. These commands name every path
-explicitly and avoid `rm -rf`: `rm -r --` removes the seven skill directories,
+explicitly and avoid `rm -rf`: `rm -r --` removes the eight skill directories,
 and `rm -f --` removes the exact hook and shared-policy files
 
 ```sh
 rm -r -- .claude/skills/oss-bootstrap .claude/skills/oss-plan \
          .claude/skills/implement-minimal .claude/skills/test-and-debug \
-         .claude/skills/dependency-review .claude/skills/public-code-review \
-         .claude/skills/release-deploy
+         .claude/skills/dependency-review .claude/skills/implementation-integrity \
+         .claude/skills/public-code-review .claude/skills/release-deploy
 rm -f -- .claude/hooks/filter-command-output.sh \
          .claude/hooks/block-expensive-command.sh \
          .claude/shared/LOW_RESOURCE.md

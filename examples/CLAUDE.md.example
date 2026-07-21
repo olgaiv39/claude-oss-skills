@@ -10,6 +10,7 @@ frequently, so keep it short.
 - Build with `implement-minimal`.
 - Diagnose failing tests or builds with `test-and-debug`.
 - Gate new dependencies with `dependency-review`.
+- Audit task fidelity with `implementation-integrity` after debugging.
 - Review with `public-code-review` before merging.
 - Gate publishing and deployment with `release-deploy`.
 
