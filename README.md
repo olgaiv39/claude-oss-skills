@@ -80,9 +80,13 @@ claude-oss-skills/
 ├── hooks/
 │   ├── filter-command-output.sh
 │   └── block-expensive-command.sh
-└── examples/
-    ├── CLAUDE.md.example
-    └── settings-hooks.example.json
+├── examples/
+│   ├── CLAUDE.md.example
+│   └── settings-hooks.example.json
+└── tests/
+    ├── test_block_expensive_command.py
+    ├── test_filter_command_output.py
+    └── test_repository_structure.py
 ```
 
 Each skill keeps its `SKILL.md` short and moves detail into `references/`
