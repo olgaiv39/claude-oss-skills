@@ -1,0 +1,27 @@
+name: Regression checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run regression checks
+        run: |
+          python3 -B -m unittest discover -s tests -v
+          test ! -d tests/__pycache__
+          sh -n hooks/block-expensive-command.sh
+          sh -n hooks/filter-command-output.sh
+          python3 -m json.tool examples/settings-hooks.example.json
+          git diff --check
