@@ -1,0 +1,23 @@
+# Project defaults (example)
+
+Copy relevant lines into your project's CLAUDE.md. This file is loaded
+frequently, so keep it short.
+
+## Skills
+
+- Plan with `oss-plan` before substantial code.
+- Build with `implement-minimal`.
+- Review with `public-code-review` before merging.
+- Gate new dependencies with `dependency-review`.
+- Gate publishing with `release-check`.
+
+## Defaults
+
+- No speculative abstractions.
+- No comments that narrate obvious code.
+- No unrelated refactoring or formatting churn.
+- Truthful documentation only; no fabricated tests, metrics, or claims.
+- Run targeted validation first; full validation only at milestones.
+- Follow low-resource execution (see `.claude/shared/LOW_RESOURCE.md`).
+- Never overwrite files silently.
+- Report exactly what was and was not validated.
