@@ -1,55 +1,115 @@
 ---
 name: oss-plan
-description: Produce a short, reviewable implementation plan before writing substantial code for a public open-source project. Use when starting or extending a project, before code generation, to define scope, trust boundaries, validation, and open-source and privacy risks. Do not write code while using this skill.
+description: Produce an execution plan before writing substantial code for a public open-source project. Use when starting or extending a feature to define the narrowest end-to-end slice, validation per step, trust boundaries, deployment path, and public-repository risks. Keeps the project runnable after every step. Does not write implementation code.
 disable-model-invocation: true
 ---
 
 # oss-plan
 
-Produce a short implementation plan before any substantial code generation.
-Do not create code while using this skill.
+Produce an execution plan that keeps the project runnable after every
+meaningful step. Do not write implementation code while using this skill.
 
-Read the first of these files that exists, then follow it:
+## Activate when
+
+- Starting a new feature or a non-trivial change
+- Scope, sequencing, or trust boundaries are unclear
+- A change will touch multiple files or an external system
+
+## Do not activate when
+
+- The change is a one-line fix with obvious validation -> use `implement-minimal`
+- The repository does not exist yet -> use `oss-bootstrap`
+- You are debugging a failure -> use `test-and-debug`
+
+## Required inputs
+
+- The feature or change request
+- Access to the repository to inspect status and conventions
+- Any external systems the feature must touch
+
+## Low-resource policy
+
+Read the first of these that exists, then follow it:
 
 - `${CLAUDE_PROJECT_DIR}/.claude/shared/LOW_RESOURCE.md`
 - `$HOME/.claude/shared/LOW_RESOURCE.md`
 
-If neither exists, do not scan the filesystem; apply these core constraints:
-run one expensive command at a time, prefer targeted tests before full
-suites, disable watch mode, and run full validation only at milestones.
+If neither exists, apply this fallback: run one expensive command at a time,
+prefer the narrowest validation, disable watch mode, reuse existing
+environments, and run full validation only at a milestone boundary. Do not
+scan the whole filesystem to locate the policy.
 
-## Plan contents
+## Facts that must not be assumed
 
-Write a concise plan with these sections:
+- The test runner, package manager, or build tool
+- That an external API, wallet, or MCP tool is available offline
+- That existing tests pass right now
+- The deployment target
 
-1. **Problem** — the concrete problem being solved.
-2. **Primary user flow** — the main path a user takes end to end.
-3. **Acceptance criteria** — testable conditions for "done".
-4. **Data sources and trust boundaries** — where data enters, what is
-   trusted, what must be validated.
-5. **Files expected to change** — existing files you will edit.
-6. **Files expected to be created** — new files.
-7. **Validation commands** — targeted commands to verify the change.
-8. **Open-source and privacy risks** — see checklist below.
-9. **Out of scope** — work explicitly excluded from this change.
+Separate confirmed facts from assumptions and label every assumption.
 
-## Open-source and privacy risks
+## Preflight
 
-Identify whether any proposed code or data may be confidential, proprietary,
-personal, or otherwise unsuitable for a public repository. Flag secrets,
-internal URLs, client or employer names, and copied private code.
+1. `git status --short` and `git log --oneline -5` for current state
+2. `git diff --stat` for uncommitted work in progress
+3. Identify project conventions ->
+   [references/execution-planning.md](references/execution-planning.md)
+4. Identify external systems and trust boundaries ->
+   [references/trust-boundaries.md](references/trust-boundaries.md)
 
-## Behavioral rules
+## Workflow
 
-- Do not create code while planning.
-- Do not invent future requirements.
-- Do not introduce abstractions for hypothetical features.
-- Do not propose unrelated refactoring.
-- Prefer one complete vertical slice over broad partial work.
-- Keep the plan short enough to review in a few minutes.
-- Distinguish confirmed requirements from assumptions; label assumptions.
+1. Inspect current status and recent diff
+2. Discover project conventions and existing validation commands
+3. Identify the narrowest end-to-end path that delivers observable value
+4. Separate confirmed requirements from assumptions
+5. Map external systems, inputs, and trust boundaries
+6. Define targeted validation for each increment
+7. Mark which actions are locally expensive and schedule them at milestones
+8. Identify when another skill is required (dependency-review, implement-minimal,
+   test-and-debug, release-deploy)
+9. Produce the plan using
+   [templates/execution-plan.md](templates/execution-plan.md)
+10. Stop after the plan
 
-## Output
+## Decision branches
 
-Present the plan for review. Stop after the plan. Implementation happens
-under `implement-minimal`, not here.
+- The slice needs a new dependency -> note it and require `dependency-review`
+  before implementation, do not assume approval
+- The slice depends on an offline external system -> plan a mock boundary and
+  mark the live path as unvalidated
+- Acceptance cannot be validated cheaply -> narrow the slice until it can
+- The change is larger than one vertical slice -> split into sequenced slices,
+  each runnable on its own
+
+## Validation escalation
+
+For each increment, specify the smallest check that proves it:
+
+```text
+single test or command
+related test file
+changed-file lint or typecheck
+related integration path
+full suite only at the milestone that ends the plan
+```
+
+Never plan a full-suite run after every edit.
+
+## Stop conditions
+
+- Requirements remain contradictory after one clarification pass
+- The narrowest slice still cannot be validated locally
+- The plan would require an unavailable external system with no mock
+
+## Human review boundaries
+
+- Trust-boundary decisions involving auth, wallets, or user data
+- Any assumption that changes scope materially
+- Deployment target selection
+
+## Final report
+
+Produce the plan in the exact section order of
+[templates/execution-plan.md](templates/execution-plan.md). Present it for
+review and stop; implementation happens under `implement-minimal`.

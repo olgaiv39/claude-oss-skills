@@ -1,64 +1,112 @@
 ---
 name: public-code-review
-description: Review the current diff or a specified set of files as public open-source code. Use before publishing or merging to check code quality, public-repository safety (secrets and private data), documentation trustworthiness, and maintainability. Reports issues; does not fix them unless asked.
+description: Review the current diff or a specified set of files as public open-source code before publishing or merging. Use to check code quality, public-repository safety (secrets and private data), documentation trustworthiness, provenance, onboarding, and maintainability. Reports grouped findings; does not fix them unless asked.
 disable-model-invocation: true
 ---
 
 # public-code-review
 
 Review the current diff, or a clearly specified set of files, as public
-open-source code. Do not automatically fix issues unless explicitly requested.
+open-source code. Report findings; do not fix anything unless the user
+explicitly asks.
 
-Read the first of these files that exists, then follow it, before running
-any commands:
+## Activate when
+
+- Code is about to be published or merged to a public repository
+- A diff needs a safety and quality pass before release
+- An external contribution needs review before acceptance
+
+## Do not activate when
+
+- A test or build is failing and needs a fix -> use `test-and-debug`
+- The change has not been implemented yet -> use `implement-minimal`
+- The task is packaging and shipping a release -> use `release-deploy`
+
+## Required inputs
+
+- The diff to review, or an explicit list of files
+- Whether the target repository is already public
+- The project's stated license
+
+## Low-resource policy
+
+Read the first of these that exists, then follow it:
 
 - `${CLAUDE_PROJECT_DIR}/.claude/shared/LOW_RESOURCE.md`
 - `$HOME/.claude/shared/LOW_RESOURCE.md`
 
-If neither exists, do not scan the filesystem; apply these core constraints:
-run one expensive command at a time, prefer targeted tests before full
-suites, disable watch mode, and run full validation only at milestones.
+If neither exists, apply this fallback: run one expensive command at a time,
+prefer the narrowest validation, disable watch mode, reuse existing
+environments, and run full validation only at a milestone boundary. Do not
+scan the whole filesystem to locate the policy.
 
-## Code quality
+## Facts that must not be assumed
 
-Check for: unnecessary abstractions, unnecessary layers, duplicated logic,
-dead code, unused exports, oversized functions, excessive comments, unclear
-naming, unrelated changes, speculative error handling, avoidable complexity.
+- That the diff is the whole change; confirm the scope under review
+- That secrets scanning tooling is installed
+- That README claims match current behavior
+- That copied code is licensed for redistribution
 
-## Public repository safety
+## Preflight
 
-Check for: secrets, credentials, tokens, private keys, wallet seed material,
-personal information, private email addresses, internal URLs, client or
-employer names, confidential project terminology, proprietary data, copied
-private code, generated artifacts, unexpected binaries, unsafe example
-configuration.
+1. `git status --short` and `git diff --stat` to bound the review scope
+2. Confirm whether the review is the working diff, a staged diff, or a file list
+3. Read the license so compatibility findings are accurate
 
-## Trustworthiness
+## Workflow
 
-Check that:
+1. Establish the exact set of files and hunks under review
+2. Run the review passes in order ->
+   [references/review-passes.md](references/review-passes.md)
+3. Run the privacy and provenance pass ->
+   [references/privacy-provenance.md](references/privacy-provenance.md)
+4. Run the onboarding pass ->
+   [references/onboarding-review.md](references/onboarding-review.md)
+5. Classify each finding into one output group
+6. Produce the report using
+   [templates/public-review-report.md](templates/public-review-report.md)
+7. Stop; do not apply fixes unless the user asks
 
-- README claims match implemented behavior.
-- Mock and demo data are clearly identified.
-- Known limitations are visible.
-- Benchmark or performance claims have evidence.
-- Security claims are appropriately limited.
-- The project does not call itself production-ready without justification.
-- Generated text does not fabricate tests, metrics, integrations, or
-  compatibility.
+## Review passes
 
-## Maintainability
+Run these passes; each names what to look for ->
+[references/review-passes.md](references/review-passes.md)
 
-Check that: setup is understandable, structure is predictable, errors are
-actionable, dependencies are justified, changed code is testable, and
-architecture is proportionate to project size.
+- Code quality
+- Public-repository safety (secrets and private data)
+- Trustworthiness of documentation and claims
+- Maintainability
+- Privacy and provenance ->
+  [references/privacy-provenance.md](references/privacy-provenance.md)
+- Onboarding ->
+  [references/onboarding-review.md](references/onboarding-review.md)
 
-## Output
+## Decision branches
 
-Group findings into:
+- A secret, key, or private datum is present -> **blocking**, and flag it for
+  immediate rotation in human review
+- A README claim contradicts behavior -> **blocking** until reconciled
+- Copied code lacks a compatible license or attribution -> **blocking**
+- A quality issue does not affect safety or correctness ->
+  **recommended cleanup**
+- A deliberate, explained compromise -> **acceptable trade-off**
 
-- **Blocking issues**
-- **Recommended cleanup**
-- **Acceptable trade-offs**
-- **Files requiring human review**
+## Stop conditions
 
-Do not fix anything unless the user explicitly asks.
+- The scope under review cannot be established
+- The review would require running an unavailable external system
+- A finding needs a human decision the reviewer cannot make (see below)
+
+## Human review boundaries
+
+- Any detected secret, key, or private datum, regardless of apparent validity
+- Auth, wallet, or user-data handling changes
+- License or provenance questions on copied or bundled material
+
+## Final report
+
+Produce the report in the exact section order of
+[templates/public-review-report.md](templates/public-review-report.md), with
+findings grouped as **Blocking issues**, **Recommended cleanup**,
+**Acceptable trade-offs**, and **Files requiring human review**. Do not fix
+anything unless the user explicitly asks.

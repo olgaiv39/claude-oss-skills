@@ -5,11 +5,13 @@ frequently, so keep it short.
 
 ## Skills
 
+- Bootstrap a new repository with `oss-bootstrap`.
 - Plan with `oss-plan` before substantial code.
 - Build with `implement-minimal`.
-- Review with `public-code-review` before merging.
+- Diagnose failing tests or builds with `test-and-debug`.
 - Gate new dependencies with `dependency-review`.
-- Gate publishing with `release-check`.
+- Review with `public-code-review` before merging.
+- Gate publishing and deployment with `release-deploy`.
 
 ## Defaults
 

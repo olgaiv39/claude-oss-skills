@@ -1,8 +1,10 @@
 # claude-oss-skills
 
-A small Claude Code skills bundle for developing public open-source projects
-on resource-constrained hardware. It regulates both code quality and
-execution cost from the start of development
+A set of practical Claude Code runbooks for developing public open-source
+projects on resource-constrained hardware. Seven manually-invoked skills cover
+the workflow from an empty directory to a deployed release, and two advisory
+hooks keep execution cost low. Skills regulate code quality and execution cost;
+hooks advise on individual Bash commands
 
 ## Purpose
 
@@ -11,9 +13,23 @@ comments, speculative architecture, heavy validation commands, and misleading
 public documentation - while keeping CPU, RAM, disk, battery, and thermal use
 low
 
+## Skills and hooks
+
+Two kinds of thing live here, and they operate at different layers:
+
+- Workflow skills are procedural runbooks you invoke by command (`/oss-plan`,
+  `/implement-minimal`, and so on). Each sets `disable-model-invocation: true`,
+  so Claude never runs one on its own; you choose when to enter the runbook
+- Advisory hooks are shell scripts that inspect a single Bash command
+  (`block-expensive-command.sh`) or reduce command output
+  (`filter-command-output.sh`). They act per command, not per workflow, and
+  they only advise
+
 ## Design principles
 
 - Small files, predictable structure, concise language
+- Progressive disclosure: each `SKILL.md` routes; stack-specific commands,
+  recovery recipes, and report formats live in `references/` and `templates/`
 - Conservative shell scripting with no third-party dependencies
 - Explicit limitations and truthful documentation
 - Shared constraints live in one file; skills reference it instead of
@@ -26,11 +42,34 @@ claude-oss-skills/
 ├── README.md
 ├── LICENSE
 ├── skills/
-│   ├── oss-plan/SKILL.md
-│   ├── implement-minimal/SKILL.md
-│   ├── public-code-review/SKILL.md
-│   ├── dependency-review/SKILL.md
-│   └── release-check/SKILL.md
+│   ├── oss-bootstrap/
+│   │   ├── SKILL.md
+│   │   ├── references/
+│   │   └── templates/
+│   ├── oss-plan/
+│   │   ├── SKILL.md
+│   │   ├── references/
+│   │   └── templates/
+│   ├── implement-minimal/
+│   │   ├── SKILL.md
+│   │   ├── references/
+│   │   └── templates/
+│   ├── test-and-debug/
+│   │   ├── SKILL.md
+│   │   ├── references/
+│   │   └── templates/
+│   ├── dependency-review/
+│   │   ├── SKILL.md
+│   │   ├── references/
+│   │   └── templates/
+│   ├── public-code-review/
+│   │   ├── SKILL.md
+│   │   ├── references/
+│   │   └── templates/
+│   └── release-deploy/
+│       ├── SKILL.md
+│       ├── references/
+│       └── templates/
 ├── shared/LOW_RESOURCE.md
 ├── hooks/
 │   ├── filter-command-output.sh
@@ -40,21 +79,46 @@ claude-oss-skills/
     └── settings-hooks.example.json
 ```
 
+Each skill keeps its `SKILL.md` short and moves detail into `references/`
+(stack-specific commands, decision tables, recovery recipes) and `templates/`
+(the exact report format each skill produces). This keeps the routing logic
+readable and loads detail only when a branch needs it
+
 ## Skills
 
+The seven skills form a path from an empty directory to a deployed release. Run
+the one that matches the task; none activate on their own
+
+- **oss-bootstrap** - Prepares a new or nearly empty repository into a clean
+  publishable starting point, detecting the stack and never overwriting an
+  existing README, LICENSE, or `.gitignore`
 - **oss-plan** - Produces a short, reviewable implementation plan (problem,
   user flow, acceptance criteria, trust boundaries, files, validation, OSS and
   privacy risks, out-of-scope) before writing code
 - **implement-minimal** - Implements the smallest complete change that
   satisfies the acceptance criteria; avoids speculative abstraction, unrelated
   changes, obvious comments, and unverified validation claims
-- **public-code-review** - Reviews a diff or file set as public code across
-  quality, repository safety, trustworthiness, and maintainability
+- **test-and-debug** - Diagnoses a failing test, build, or runtime error by
+  isolating the narrowest reproduction, classifying the failure, and applying
+  the smallest fix
 - **dependency-review** - Evaluates a proposed dependency and ends with a
   single decision: add, do not add, or defer pending evidence
-- **release-check** - Pre-publication and pre-submission review; runs
-  expensive checks sequentially and reports passed / failed / skipped /
-  requires human review
+- **public-code-review** - Reviews a diff or file set as public code across
+  quality, repository safety, privacy and provenance, onboarding, and
+  maintainability
+- **release-deploy** - Runs the pre-release checklist, then follows the
+  detected deployment target's path (GitHub repo, static site or Pages, Docker,
+  Node or Python service, Archestra app, MCP server, or package registry),
+  never publishing, tagging, pushing, or deploying without explicit intent
+
+### Migrating from /release-check
+
+`release-check` is now `release-deploy`. It keeps the same pre-publication
+checklist and adds target-specific deployment paths, and it still never
+commits, tags, pushes, publishes, or deploys without explicit intent. Update
+any command, settings, or `CLAUDE.md` reference from `/release-check` to
+`/release-deploy`, and remove a stale `.claude/skills/release-check` directory
+from an earlier install
 
 ## Hooks
 
@@ -259,8 +323,9 @@ DEST=".claude"
 
 # 1. Check every destination path first; stop on the first conflict.
 #    -e misses broken symlinks, so -L is also checked.
-for rel in skills/oss-plan skills/implement-minimal skills/public-code-review \
-           skills/dependency-review skills/release-check \
+for rel in skills/oss-bootstrap skills/oss-plan skills/implement-minimal \
+           skills/test-and-debug skills/dependency-review \
+           skills/public-code-review skills/release-deploy \
            hooks/filter-command-output.sh hooks/block-expensive-command.sh \
            shared/LOW_RESOURCE.md; do
     if [ -e "$DEST/$rel" ] || [ -L "$DEST/$rel" ]; then
@@ -294,8 +359,9 @@ conflict, so `-e || -L` is used rather than `-e` alone:
 DEST=".claude"
 SRC="$(pwd)"
 
-rels="skills/oss-plan skills/implement-minimal skills/public-code-review \
-      skills/dependency-review skills/release-check \
+rels="skills/oss-bootstrap skills/oss-plan skills/implement-minimal \
+      skills/test-and-debug skills/dependency-review \
+      skills/public-code-review skills/release-deploy \
       hooks/filter-command-output.sh hooks/block-expensive-command.sh \
       shared/LOW_RESOURCE.md"
 
@@ -328,17 +394,19 @@ existing `settings.json` or `settings.local.json` with the example file
 
 ## Manual activation
 
-- Skills are discovered from `.claude/skills/` or `~/.claude/skills/`. All five
-  skills set `disable-model-invocation: true`, so they are procedural
+- Skills are discovered from `.claude/skills/` or `~/.claude/skills/`. All
+  seven skills set `disable-model-invocation: true`, so they are procedural
   workflows that you invoke manually by command; Claude does not activate them
   automatically:
 
   ```text
+  /oss-bootstrap
   /oss-plan
   /implement-minimal
-  /public-code-review
+  /test-and-debug
   /dependency-review
-  /release-check
+  /public-code-review
+  /release-deploy
   ```
 
 - To enable the command-policy hook, merge the object in
@@ -363,10 +431,13 @@ tests, no watch mode, and full validation only at milestone boundaries
 
 ## Usage examples
 
+- Start a new repository: run `/oss-bootstrap`, review the created files, then
+  commit yourself
 - Start a feature: run `/oss-plan`, review the plan, then `/implement-minimal`
+- When a test or build breaks: run `/test-and-debug`
 - Before adding a package: run `/dependency-review`
 - Before merging: run `/public-code-review`
-- Before publishing: run `/release-check`
+- Before publishing or deploying: run `/release-deploy`
 
 ## Example configuration
 
@@ -396,13 +467,14 @@ an `if` filter yourself only if your Claude Code version supports them
 
 Remove the copied files. Review each path first and adjust `.claude` to
 `$HOME/.claude` for a user-level install. These commands name every path
-explicitly and avoid `rm -rf`: `rm -r --` removes the five skill directories,
+explicitly and avoid `rm -rf`: `rm -r --` removes the seven skill directories,
 and `rm -f --` removes the exact hook and shared-policy files
 
 ```sh
-rm -r -- .claude/skills/oss-plan .claude/skills/implement-minimal \
-         .claude/skills/public-code-review .claude/skills/dependency-review \
-         .claude/skills/release-check
+rm -r -- .claude/skills/oss-bootstrap .claude/skills/oss-plan \
+         .claude/skills/implement-minimal .claude/skills/test-and-debug \
+         .claude/skills/dependency-review .claude/skills/public-code-review \
+         .claude/skills/release-deploy
 rm -f -- .claude/hooks/filter-command-output.sh \
          .claude/hooks/block-expensive-command.sh \
          .claude/shared/LOW_RESOURCE.md
