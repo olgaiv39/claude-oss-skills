@@ -33,9 +33,73 @@ EXPECTED_SKILLS = {
 
 LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 
+SHARED_POLICIES = ("LOW_RESOURCE.md", "CONTEXT_EFFICIENCY.md")
+
+TEST_FILE_NAMES = (
+    "test_block_expensive_command.py",
+    "test_filter_command_output.py",
+    "test_repository_structure.py",
+)
+
+# (description, start marker, end marker, path template) for the explicit
+# per-skill path lists the README documents. Each list must name every skill.
+README_SKILL_LISTS = (
+    ("installation", "for rel in skills/oss-bootstrap", "; do", "skills/{name}"),
+    ("symlink", 'rels="skills/oss-bootstrap', '"', "skills/{name}"),
+    (
+        "uninstall",
+        "rm -r -- .claude/skills/oss-bootstrap",
+        "rm -f",
+        ".claude/skills/{name}",
+    ),
+)
+
+_BYTECODE_SUFFIXES = {".pyc", ".pyo", ".pyd"}
+_EXCLUDED_DIRS = {".git", "__pycache__"}
+
 
 def skill_dirs():
     return sorted(p for p in SKILLS_DIR.iterdir() if p.is_dir())
+
+
+def repo_files():
+    """Return repo-relative POSIX paths to inspect for metadata checks.
+
+    Prefers Git's tracked-file list inside a normal checkout. When `.git` is
+    absent (a GitHub Download ZIP or another copy), falls back to a bounded
+    `os.walk`, pruning `.git` and `__pycache__` and skipping Python bytecode.
+    Requires no network access or external packages.
+    """
+    if (REPO_ROOT / ".git").exists():
+        result = subprocess.run(
+            ["git", "ls-files"],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            return sorted(
+                line.strip()
+                for line in result.stdout.splitlines()
+                if line.strip()
+            )
+    files = []
+    for dirpath, dirnames, filenames in os.walk(REPO_ROOT):
+        dirnames[:] = [d for d in dirnames if d not in _EXCLUDED_DIRS]
+        for name in filenames:
+            if Path(name).suffix in _BYTECODE_SUFFIXES:
+                continue
+            rel = Path(dirpath, name).relative_to(REPO_ROOT)
+            files.append(rel.as_posix())
+    return sorted(files)
+
+
+def readme_slice(text, start_marker, end_marker):
+    """Return the README substring spanning a documented path list."""
+    start = text.index(start_marker)
+    end = text.index(end_marker, start + len(start_marker))
+    return text[start:end]
 
 
 def parse_frontmatter(text):
@@ -101,6 +165,17 @@ class TestSkillFrontmatter(unittest.TestCase):
             names.append(fields.get("name"))
         self.assertEqual(len(names), len(set(names)), msg=f"names={names}")
 
+    def test_directory_name_matches_frontmatter_name(self):
+        for skill in skill_dirs():
+            with self.subTest(skill=skill.name):
+                text = (skill / "SKILL.md").read_text(encoding="utf-8")
+                fields = parse_frontmatter(text) or {}
+                self.assertEqual(
+                    fields.get("name"),
+                    skill.name,
+                    msg="frontmatter name must match directory name",
+                )
+
 
 class TestSkillReferences(unittest.TestCase):
     def test_local_markdown_links_resolve(self):
@@ -141,6 +216,33 @@ class TestSkillReferences(unittest.TestCase):
                                 path.stat().st_size, 0, msg="empty file"
                             )
 
+    def test_skill_references_shared_policies(self):
+        for skill in skill_dirs():
+            text = (skill / "SKILL.md").read_text(encoding="utf-8")
+            for policy in SHARED_POLICIES:
+                with self.subTest(skill=skill.name, policy=policy):
+                    self.assertIn(
+                        policy, text, msg=f"{skill.name} must reference {policy}"
+                    )
+
+    def test_reference_and_template_files_are_linked(self):
+        for skill in skill_dirs():
+            text = (skill / "SKILL.md").read_text(encoding="utf-8")
+            for sub in ("references", "templates"):
+                sub_dir = skill / sub
+                if not sub_dir.is_dir():
+                    continue
+                for path in sorted(sub_dir.iterdir()):
+                    if not path.is_file():
+                        continue
+                    rel = f"{sub}/{path.name}"
+                    with self.subTest(skill=skill.name, target=rel):
+                        self.assertIn(
+                            rel,
+                            text,
+                            msg=f"{rel} not referenced by {skill.name}/SKILL.md",
+                        )
+
 
 class TestSharedAndHooks(unittest.TestCase):
     def test_shared_policies_exist_non_empty(self):
@@ -168,19 +270,34 @@ class TestReadmeAndCleanliness(unittest.TestCase):
             with self.subTest(command=f"/{skill}"):
                 self.assertIn(f"/{skill}", readme)
 
-    def test_no_macos_junk_tracked(self):
-        result = subprocess.run(
-            ["git", "ls-files"],
-            cwd=str(REPO_ROOT),
-            capture_output=True,
-            text=True,
-            timeout=30,
+    def test_readme_lists_test_files(self):
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        for name in TEST_FILE_NAMES:
+            with self.subTest(test_file=name):
+                self.assertIn(name, readme)
+
+    def test_example_claude_md_mentions_all_commands(self):
+        text = (REPO_ROOT / "examples" / "CLAUDE.md.example").read_text(
+            encoding="utf-8"
         )
-        self.assertEqual(result.returncode, 0, msg=result.stderr)
-        for rel in result.stdout.split("\n"):
-            rel = rel.strip()
-            if not rel:
-                continue
+        for skill in sorted(EXPECTED_SKILLS):
+            with self.subTest(command=skill):
+                self.assertIn(skill, text)
+
+    def test_readme_path_lists_cover_every_skill(self):
+        readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+        for label, start, end, template in README_SKILL_LISTS:
+            region = readme_slice(readme, start, end)
+            for skill in sorted(EXPECTED_SKILLS):
+                with self.subTest(list=label, skill=skill):
+                    self.assertIn(
+                        template.format(name=skill),
+                        region,
+                        msg=f"{label} list omits {skill}",
+                    )
+
+    def test_no_macos_junk_present(self):
+        for rel in repo_files():
             base = os.path.basename(rel)
             with self.subTest(path=rel):
                 self.assertNotEqual(base, ".DS_Store")

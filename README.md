@@ -2,9 +2,11 @@
 
 A set of practical Claude Code runbooks for developing public open-source
 projects on resource-constrained hardware. Eight manually-invoked skills cover
-the workflow from an empty directory to a deployed release, and two advisory
-hooks keep execution cost low. Skills regulate code quality and execution cost;
-hooks advise on individual Bash commands
+the workflow from an empty directory to a deployed release, and two shell files
+help keep execution cost low: one best-effort `PreToolUse` command guard and
+one output-filter utility. Skills regulate code quality and execution cost; the
+command guard can block recognized Bash commands, and the output filter reduces
+command output
 
 ## Purpose
 
@@ -20,10 +22,12 @@ Two kinds of thing live here, and they operate at different layers:
 - Workflow skills are procedural runbooks you invoke by command (`/oss-plan`,
   `/implement-minimal`, and so on). Each sets `disable-model-invocation: true`,
   so Claude never runs one on its own; you choose when to enter the runbook
-- Advisory hooks are shell scripts that inspect a single Bash command
-  (`block-expensive-command.sh`) or reduce command output
-  (`filter-command-output.sh`). They act per command, not per workflow, and
-  they only advise
+- The two shell files act per command, not per workflow. One is a best-effort
+  `PreToolUse` command guard (`block-expensive-command.sh`) that can block
+  recognized commands but is not a sandbox or a complete shell-security
+  boundary. The other is a standalone output-filter utility
+  (`filter-command-output.sh`) rather than a native Claude Code hook. Neither
+  component guarantees complete command or output safety
 
 ## Design principles
 
@@ -144,11 +148,13 @@ from an earlier install
 
 ## Hooks
 
-Both hooks are plain POSIX shell and require no third-party packages
+Both shell files are plain POSIX shell and require no third-party packages
 
 ### block-expensive-command.sh
 
-Advisory Claude Code `PreToolUse` policy hook for the Bash tool
+Best-effort Claude Code `PreToolUse` command guard for the Bash tool. It can
+block recognized commands, but it is not a sandbox or a complete shell-security
+boundary
 
 - Input: the hook payload as JSON on stdin. The script reads `tool_name` and
   `tool_input.command` (via Python 3 standard library) and inspects only the
@@ -495,7 +501,7 @@ an `if` filter yourself only if your Claude Code version supports them
 Run the lightweight regression suite from the bundle root:
 
 ```sh
-python3 -m unittest discover -s tests -v
+python3 -B -m unittest discover -s tests -v
 ```
 
 The tests:
