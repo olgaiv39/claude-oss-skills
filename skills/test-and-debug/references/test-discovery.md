@@ -22,8 +22,10 @@ Illustrative only; confirm the runner first, then select the narrowest target.
     # single file through the project's own script
     npm test -- path/to/file.test.ts
     pnpm test path/to/file.test.ts
-    # single type check of changed files where the project supports it
-    npx tsc --noEmit
+    # type check via the project's own typecheck script, or an already
+    # installed local compiler; do not use npx, which may download a package
+    npm run typecheck
+    ./node_modules/.bin/tsc --noEmit
 
 ### Python
 
