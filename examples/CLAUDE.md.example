@@ -24,3 +24,14 @@ frequently, so keep it short.
 - Follow low-resource execution (see `.claude/shared/LOW_RESOURCE.md`).
 - Never overwrite files silently.
 - Report exactly what was and was not validated.
+
+## Context efficiency
+
+See `.claude/shared/CONTEXT_EFFICIENCY.md`.
+
+- Select files before reading.
+- Prefer targeted search and bounded ranges.
+- Do not preload all references.
+- Avoid rereading unchanged files.
+- Finish one increment before expanding scope.
+- Create a compact handoff when context is low.

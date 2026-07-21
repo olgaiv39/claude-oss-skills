@@ -74,7 +74,9 @@ claude-oss-skills/
 │       ├── SKILL.md
 │       ├── references/
 │       └── templates/
-├── shared/LOW_RESOURCE.md
+├── shared/
+│   ├── LOW_RESOURCE.md
+│   └── CONTEXT_EFFICIENCY.md
 ├── hooks/
 │   ├── filter-command-output.sh
 │   └── block-expensive-command.sh
@@ -344,7 +346,7 @@ for rel in skills/oss-bootstrap skills/oss-plan skills/implement-minimal \
            skills/implementation-integrity skills/public-code-review \
            skills/release-deploy \
            hooks/filter-command-output.sh hooks/block-expensive-command.sh \
-           shared/LOW_RESOURCE.md; do
+           shared/LOW_RESOURCE.md shared/CONTEXT_EFFICIENCY.md; do
     if [ -e "$DEST/$rel" ] || [ -L "$DEST/$rel" ]; then
         echo "conflict: $DEST/$rel already exists; aborting" >&2
         exit 1
@@ -357,7 +359,7 @@ mkdir -p "$DEST/skills" "$DEST/hooks" "$DEST/shared"
 # 3. Copy only after all checks passed (no -f, no overwrite).
 cp -R skills/. "$DEST/skills/"
 cp hooks/filter-command-output.sh hooks/block-expensive-command.sh "$DEST/hooks/"
-cp shared/LOW_RESOURCE.md "$DEST/shared/"
+cp shared/LOW_RESOURCE.md shared/CONTEXT_EFFICIENCY.md "$DEST/shared/"
 # Make only the two bundle hooks executable; do not touch other hooks.
 chmod +x "$DEST/hooks/filter-command-output.sh" \
          "$DEST/hooks/block-expensive-command.sh"
@@ -381,7 +383,7 @@ rels="skills/oss-bootstrap skills/oss-plan skills/implement-minimal \
       skills/implementation-integrity skills/public-code-review \
       skills/release-deploy \
       hooks/filter-command-output.sh hooks/block-expensive-command.sh \
-      shared/LOW_RESOURCE.md"
+      shared/LOW_RESOURCE.md shared/CONTEXT_EFFICIENCY.md"
 
 # 1. Check every destination first; stop on the first conflict.
 #    Treat an existing file, directory, or broken symlink as a conflict.
@@ -448,6 +450,17 @@ See `shared/LOW_RESOURCE.md`. The bundle assumes limited CPU, RAM, disk,
 battery, and thermal capacity, so it favors targeted validation, single-worker
 tests, no watch mode, and full validation only at milestone boundaries
 
+## Context-efficiency rationale
+
+See `shared/CONTEXT_EFFICIENCY.md`. Low-resource execution controls compute
+cost; context efficiency controls how much is read into and retained in the
+model's working context so a task can finish before context runs out. Each
+skill keeps its `SKILL.md` short and loads a supporting reference or template
+only when the current workflow branch needs it, rather than preloading them.
+The policy favors selecting files before reading, progressive reads with
+bounded ranges, compact working context, and a compact handoff when context is
+low
+
 ## Usage examples
 
 - Start a new repository: run `/oss-bootstrap`, review the created files, then
@@ -497,7 +510,7 @@ rm -r -- .claude/skills/oss-bootstrap .claude/skills/oss-plan \
          .claude/skills/public-code-review .claude/skills/release-deploy
 rm -f -- .claude/hooks/filter-command-output.sh \
          .claude/hooks/block-expensive-command.sh \
-         .claude/shared/LOW_RESOURCE.md
+         .claude/shared/LOW_RESOURCE.md .claude/shared/CONTEXT_EFFICIENCY.md
 ```
 
 Then remove any hook entry you added to your Claude Code settings

@@ -42,6 +42,18 @@ prefer the narrowest validation first, disable watch mode, reuse existing
 environments, and run full validation only at this milestone. Do not scan the
 whole filesystem to locate the policy.
 
+## Context-efficiency policy
+
+Read the first of these that exists, then follow it:
+
+- `${CLAUDE_PROJECT_DIR}/.claude/shared/CONTEXT_EFFICIENCY.md`
+- `$HOME/.claude/shared/CONTEXT_EFFICIENCY.md`
+
+If neither exists, apply this fallback: select files before reading; use
+targeted searches and bounded ranges; do not preload references; do not reread
+unchanged files; finish one atomic increment and stop; create a compact handoff
+before context is exhausted.
+
 ## Facts that must not be assumed
 
 - The deployment target; detect it, do not guess

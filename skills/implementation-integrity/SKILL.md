@@ -84,6 +84,18 @@ validation first, avoid watchers, avoid full builds and full suites unless
 required at a milestone, bound large output, do not install tools, and do not
 use subagents merely for speed.
 
+## Context-efficiency policy
+
+Read the first of these that exists, then follow it:
+
+- `${CLAUDE_PROJECT_DIR}/.claude/shared/CONTEXT_EFFICIENCY.md`
+- `$HOME/.claude/shared/CONTEXT_EFFICIENCY.md`
+
+If neither exists, apply this fallback: select files before reading; use
+targeted searches and bounded ranges; do not preload references; do not reread
+unchanged files; finish one atomic increment and stop; create a compact handoff
+before context is exhausted.
+
 ## Preflight
 
 1. Confirm the task and acceptance criteria
