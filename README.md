@@ -486,6 +486,23 @@ into your existing settings by hand; do not overwrite `settings.json` or
 are intentionally omitted to stay compatible across versions; add `timeout` or
 an `if` filter yourself only if your Claude Code version supports them
 
+## Testing
+
+Run the lightweight regression suite from the bundle root:
+
+```sh
+python3 -m unittest discover -s tests -v
+```
+
+The tests:
+
+- use the Python standard library only, with no external dependencies
+- exercise both hooks as black-box subprocesses with synthetic payloads
+- never execute the embedded fixture command strings
+- validate the repository structure, frontmatter, and executable permissions
+- are intentionally lightweight and do not claim exhaustive shell-security
+  coverage
+
 ## Limitations
 
 - The bundle does not guarantee secure or correct code
