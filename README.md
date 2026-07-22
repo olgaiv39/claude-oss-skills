@@ -209,9 +209,16 @@ package-manager global options precede the subcommand, in both `--flag` and
 `cargo --color always install ...`, `go -C . install ...`, and
 `uv --directory . tool install ...`); an option value is not mistaken for the
 subcommand. Ordinary `uv run`, `poetry run`, and `bun run` are not treated as
-installs. Only common option forms are modeled, so unusual or obfuscated
-option layouts and unsupported managers may still be missed; the hook is
-advisory, not a sandbox or a complete shell or CLI parser
+installs. The same leading global options (and cargo's `+toolchain` selector)
+are normalized before validation is classified, so `uv --directory . run pytest`
+and `cargo --color always test --workspace` are recognized as broad validation
+(blocked without override, allowed with `FULL_VALIDATION=1`), while a targeted
+run such as `uv --directory . run pytest tests/...` or `cargo -q test test_name`
+stays allowed. Package installation is never bypassed by `FULL_VALIDATION=1`. A
+malformed or unsupported leading option layout fails closed (blocked). Only
+common option forms are modeled, so unusual or obfuscated option layouts and
+unsupported managers may still be missed; the hook is advisory, not a sandbox or
+a complete shell or CLI parser
 
 Raw-device write coverage includes paths under `/dev/sd`, `/dev/disk`,
 `/dev/nvme`, and `/dev/mmcblk`, for `mkfs`, `dd` (`of=/dev/...`), a `cp` / `mv`

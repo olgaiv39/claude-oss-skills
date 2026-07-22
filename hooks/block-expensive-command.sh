@@ -596,7 +596,8 @@ PIP_FLAG_OPTS = {'--isolated', '--require-virtualenv', '--user', '--no-input',
 # exec / run / dlx / tool install) can appear after them. Only common options
 # are modeled; unusual forms may still be missed (advisory, not a full parser).
 PIPX_VALUE_OPTS = set()
-PIPX_FLAG_OPTS = {'-q', '--quiet', '-v', '--verbose', '--global'}
+PIPX_FLAG_OPTS = {'-q', '--quiet', '-v', '--verbose', '--global',
+                  '--fetch-missing-python'}
 
 CARGO_VALUE_OPTS = {'--color', '--config', '-Z'}
 CARGO_FLAG_OPTS = {'-q', '--quiet', '-v', '--verbose', '--frozen', '--locked',
@@ -606,7 +607,8 @@ GO_VALUE_OPTS = {'-C'}
 GO_FLAG_OPTS = set()
 
 UV_VALUE_OPTS = {'--directory', '--project', '--color', '--cache-dir'}
-UV_FLAG_OPTS = {'-q', '--quiet', '-v', '--verbose', '--native-tls', '--offline'}
+UV_FLAG_OPTS = {'-q', '--quiet', '-v', '--verbose', '--native-tls', '--offline',
+                '--no-progress', '--no-python-downloads', '--no-managed-python'}
 
 PKG_MANAGERS = {
     'npm': (NPM_VALUE_OPTS, NPM_FLAG_OPTS, {'install', 'i', 'ci', 'add'}),
@@ -652,6 +654,20 @@ def skip_pkg_options(rest, value_opts, flag_opts):
     return (None, [], None)
 
 
+# Shared normalization so pkg_install_reason() and classify_expensive() peel the
+# same leading options for these managers instead of diverging. Each returns
+# (subcommand, remaining_args, error) from skip_pkg_options().
+def uv_normalize(rest):
+    return skip_pkg_options(rest, UV_VALUE_OPTS, UV_FLAG_OPTS)
+
+
+def cargo_normalize(rest):
+    # cargo accepts a +toolchain selector before its global options.
+    if rest[:1] and rest[0].startswith('+'):
+        rest = rest[1:]
+    return skip_pkg_options(rest, CARGO_VALUE_OPTS, CARGO_FLAG_OPTS)
+
+
 def pkg_install_reason(tokens):
     """Classify a package-manager install after normalizing leading global
     options. Returns ('package-install', reason, alt),
@@ -691,7 +707,9 @@ def pkg_install_reason(tokens):
             return ("package-install", "implicit package execution", ALT_INSTALL)
     if cmd == 'pipx':
         sub, _a, err = skip_pkg_options(rest, PIPX_VALUE_OPTS, PIPX_FLAG_OPTS)
-        if not err and sub in ('install', 'run'):
+        if err:
+            return ("unclassifiable", err, "run a single, directly classifiable command")
+        if sub in ('install', 'run'):
             return ("package-install", "package installation", ALT_INSTALL)
         return None
 
@@ -723,33 +741,40 @@ def pkg_install_reason(tokens):
         if not found:
             return None
 
-    # uv: block dependency-modifying subcommands; leave `uv run` alone. The
-    # subcommand can sit behind leading global options such as `--directory dir`.
+    # uv: block dependency-modifying subcommands (add / sync / pip install /
+    # tool install) after normalizing supported leading global options. A
+    # non-install `uv run` is not an install here; `uv ... run pytest` is
+    # classified by the validation policy in classify_expensive(). A malformed
+    # leading option layout fails closed rather than slipping through.
     if cmd == 'uv':
-        sub, sargs, err = skip_pkg_options(rest, UV_VALUE_OPTS, UV_FLAG_OPTS)
+        sub, sargs, err = uv_normalize(rest)
         if err:
-            return None
+            return ("unclassifiable", err, "run a single, directly classifiable command")
         if sub in ('add', 'sync'):
             return ("package-install", "package installation", ALT_INSTALL)
         if sub in ('pip', 'tool') and sargs[:1] == ['install']:
             return ("package-install", "package installation", ALT_INSTALL)
         return None
 
-    # cargo accepts a +toolchain selector, then common leading global options
-    # (e.g. `--color always`, `-q`) before the subcommand.
+    # cargo: normalize +toolchain and supported leading global options, then
+    # classify add / install. Non-install subcommands (test/build/watch) are
+    # handled by classify_expensive(); a malformed option layout fails closed.
     if cmd == 'cargo':
-        if rest[:1] and rest[0].startswith('+'):
-            rest = rest[1:]
-        sub, _a, err = skip_pkg_options(rest, CARGO_VALUE_OPTS, CARGO_FLAG_OPTS)
-        if not err and sub in ('add', 'install'):
+        sub, _a, err = cargo_normalize(rest)
+        if err:
+            return ("unclassifiable", err, "run a single, directly classifiable command")
+        if sub in ('add', 'install'):
             return ("package-install", "package installation",
                     "run dependency-review before installing")
         return None
 
-    # go: `go install` / `go get` can sit behind a leading `-C dir` option.
+    # go: `go install` / `go get` can sit behind a leading `-C dir` option; a
+    # malformed option layout fails closed.
     if cmd == 'go':
         sub, _a, err = skip_pkg_options(rest, GO_VALUE_OPTS, GO_FLAG_OPTS)
-        if not err and sub in ('get', 'install'):
+        if err:
+            return ("unclassifiable", err, "run a single, directly classifiable command")
+        if sub in ('get', 'install'):
             return ("package-install", "package installation", ALT_INSTALL)
         return None
 
@@ -779,15 +804,25 @@ def classify_expensive(tokens):
     cmd = tokens[0]
     rest = tokens[1:]
 
-    # Common pytest wrappers route to the pytest scoped/full policy below.
-    # Kept intentionally narrow: only these exact wrapper prefixes, not general
-    # python or `uv run` interpretation.
+    # Route a few narrow wrappers into the existing test/build policies below.
+    # `python -m pytest` is matched literally. For uv and cargo the supported
+    # leading global options (and cargo's +toolchain) are normalized first so
+    # the real subcommand is seen; unrecognized layouts are left for
+    # pkg_install_reason() to fail closed. This is not general uv/cargo
+    # interpretation: only `uv ... run pytest` and cargo's existing
+    # watch/test/build policies are routed.
     if cmd in ('python', 'python3') and rest[:2] == ['-m', 'pytest']:
         cmd = 'pytest'
         rest = rest[2:]
-    elif cmd == 'uv' and rest[:2] == ['run', 'pytest']:
-        cmd = 'pytest'
-        rest = rest[2:]
+    elif cmd == 'uv':
+        usub, uargs, uerr = uv_normalize(rest)
+        if not uerr and usub == 'run' and uargs[:1] == ['pytest']:
+            cmd = 'pytest'
+            rest = uargs[1:]
+    elif cmd == 'cargo':
+        csub, cargs, cerr = cargo_normalize(rest)
+        if not cerr and csub is not None:
+            rest = [csub] + cargs
 
     # Watch mode (only in relevant contexts; a bare -w is allowed).
     if '--watch' in tokens:
@@ -828,9 +863,10 @@ def classify_expensive(tokens):
     if cmd == 'bazel' and rest[:1] == ['build'] and '//...' in rest:
         return ("validation", "broad recursive bazel build", "build a specific target")
 
-    # Package installation. Managers with global options (npm/pnpm/yarn/pip/
-    # cargo, plus `python -m pip`) are normalized precisely; others use a
-    # simple subcommand check.
+    # Package installation. Recognized managers normalize supported leading
+    # global options (and cargo's +toolchain) before classifying, and an
+    # unmodeled option layout fails closed; simpler managers use a plain
+    # subcommand check. Only common option forms are modeled (advisory).
     pkg = pkg_install_reason(tokens)
     if pkg is not None:
         return pkg

@@ -49,6 +49,15 @@ ALLOWED_COMMANDS = [
     "pipx list",
     "npm --prefix . run build",
     "uv --directory . run pytest tests/test_small.py -q",
+    # Targeted validation behind supported global options (and cargo
+    # +toolchain) stays allowed without the override.
+    "cargo --color always test test_name",
+    "cargo +stable -q test test_name",
+    # The override bypasses the validation category even when the broad run
+    # sits behind supported global options (and cargo's +toolchain).
+    "FULL_VALIDATION=1 uv --directory . run pytest",
+    "FULL_VALIDATION=1 cargo --color always test --workspace",
+    "FULL_VALIDATION=1 cargo +stable --color always build --workspace",
 ]
 
 # Commands the hook must block (exit 2). These strings are payload data only.
@@ -105,6 +114,23 @@ BLOCKED_COMMANDS = [
     "go -C . install example.com/tool@latest",
     "uv --directory . tool install ruff",
     "npm --prefix . exec --yes prettier -- --write .",
+    # Package installs behind additional supported flag options.
+    "pipx --fetch-missing-python install black",
+    "uv --no-progress tool install ruff",
+    "uv --no-python-downloads pip install ruff",
+    "uv --no-managed-python tool install ruff",
+    # Broad validation behind uv/cargo global options (and cargo +toolchain)
+    # must be classified as validation (blocked without override).
+    "uv --directory . run pytest",
+    "cargo --color always test --workspace",
+    "cargo -q test --workspace",
+    "cargo +stable --color always test --workspace",
+    "cargo --color always build --workspace",
+    # Malformed / unknown leading option layouts fail closed rather than pass.
+    "uv --bogus-opt tool install ruff",
+    "cargo --bogus-opt test --workspace",
+    "pipx --bogus-opt install black",
+    "go --bogus-opt install example.com/tool@latest",
 ]
 
 # The override bypasses only the validation category; it must never bypass the
@@ -125,6 +151,12 @@ OVERRIDE_STILL_BLOCKED_COMMANDS = [
     "FULL_VALIDATION=1 cargo --color always install cargo-watch",
     "FULL_VALIDATION=1 go -C . install example.com/tool@latest",
     "FULL_VALIDATION=1 npm --prefix . exec --yes prettier -- --write .",
+    # Package installs behind additional supported flag options stay blocked
+    # under the override.
+    "FULL_VALIDATION=1 pipx --fetch-missing-python install black",
+    "FULL_VALIDATION=1 uv --no-progress tool install ruff",
+    "FULL_VALIDATION=1 uv --no-python-downloads pip install ruff",
+    "FULL_VALIDATION=1 uv --no-managed-python tool install ruff",
 ]
 
 
