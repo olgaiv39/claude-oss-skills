@@ -82,6 +82,13 @@ if not isinstance(command, str) or command.strip() == "":
     sys.stderr.write("block-expensive-command: missing command string; failing closed\n")
     sys.exit(2)
 
+# Literal multiline commands are unclassifiable: this hook classifies one
+# command at a time and does not parse multiple lines, heredocs, or escaped
+# line continuations. Fail closed even under the override.
+if "\n" in command or "\r" in command:
+    block("multiline command is unclassifiable",
+          "run one directly classifiable command at a time")
+
 # Background execution requested through the tool input itself. A literal JSON
 # boolean true is blocked; anything other than absent/false (including the
 # strings "true"/"false") fails closed. The override never bypasses this.
@@ -314,6 +321,15 @@ def tokenize(seg):
 # Wrapper normalization. Peel known-safe wrappers to reach the real command.
 # Reject wrappers we cannot classify rather than silently allowing them.
 NESTED_SHELLS = {'sh', 'bash', 'zsh', 'dash', 'ksh'}
+
+# Obvious shell control / compound-command tokens. If a normalized segment
+# begins with one of these we cannot classify it with confidence, so we fail
+# closed. This is a conservative guard, not a recursive shell parser.
+SHELL_CONTROL_TOKENS = {
+    'eval', '{', 'if', 'then', 'elif', 'else', 'fi',
+    'for', 'while', 'until', 'case', 'esac', 'do', 'done',
+    'select', 'function',
+}
 
 
 def normalize_wrappers(tokens):
@@ -589,7 +605,7 @@ GENERIC_INSTALL = {
     'apt': {'install'}, 'apt-get': {'install'},
     'brew': {'install'},
     'gem': {'install'},
-    'go': {'get'},
+    'go': {'get', 'install'},
     'poetry': {'add', 'install', 'update'},
     'bun': {'install', 'add', 'i'},
 }
@@ -629,6 +645,17 @@ def pkg_install_reason(tokens):
     rest = tokens[1:]
 
     ALT_INSTALL = "run dependency-review before installing"
+
+    # Implicit package execution / dependency runners fetch and run packages,
+    # so treat them like installation. Always blocked (not 'validation').
+    if cmd in ('npx', 'uvx'):
+        return ("package-install", "implicit package execution", ALT_INSTALL)
+    if cmd == 'pipx' and rest[:1] in (['install'], ['run']):
+        return ("package-install", "package installation", ALT_INSTALL)
+    if cmd == 'npm' and rest[:1] == ['exec']:
+        return ("package-install", "implicit package execution", ALT_INSTALL)
+    if cmd in ('pnpm', 'yarn') and rest[:1] == ['dlx']:
+        return ("package-install", "implicit package execution", ALT_INSTALL)
 
     # `python -m pip ...` routes to pip; `python -c ...` is unclassifiable.
     # Conservatively skip supported interpreter options before `-m pip`, so
@@ -670,7 +697,7 @@ def pkg_install_reason(tokens):
     if cmd == 'cargo':
         if rest[:1] and rest[0].startswith('+'):
             rest = rest[1:]
-        if rest[:1] == ['add']:
+        if rest[:1] in (['add'], ['install']):
             return ("package-install", "package installation",
                     "run dependency-review before installing")
         return None
@@ -700,6 +727,16 @@ def classify_expensive(tokens):
         return None
     cmd = tokens[0]
     rest = tokens[1:]
+
+    # Common pytest wrappers route to the pytest scoped/full policy below.
+    # Kept intentionally narrow: only these exact wrapper prefixes, not general
+    # python or `uv run` interpretation.
+    if cmd in ('python', 'python3') and rest[:2] == ['-m', 'pytest']:
+        cmd = 'pytest'
+        rest = rest[2:]
+    elif cmd == 'uv' and rest[:2] == ['run', 'pytest']:
+        cmd = 'pytest'
+        rest = rest[2:]
 
     # Watch mode (only in relevant contexts; a bare -w is allowed).
     if '--watch' in tokens:
@@ -774,6 +811,11 @@ for seg in segments_raw:
     if reject:
         # Unclassifiable (e.g. nested shell): always blocked, even override.
         block(reject, "run a single, directly classifiable command")
+    # Obvious shell control / compound-command constructs are unclassifiable
+    # and always blocked, even under the override.
+    if norm and norm[0] in SHELL_CONTROL_TOKENS:
+        block("shell control or compound-command construct",
+              "run a single, directly classifiable command")
     segments.append(norm)
 
 # Destructive commands are always blocked, even under override.

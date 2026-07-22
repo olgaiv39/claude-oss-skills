@@ -33,6 +33,16 @@ ALLOWED_COMMANDS = [
     "FULL_VALIDATION=1 cargo test --workspace",
     'echo "rm -rf"',
     "cp /dev/sdb backup.img",
+    # Scoped pytest wrappers follow the scoped/full policy: a targeted path
+    # is allowed.
+    "python -m pytest tests/test_small.py -q",
+    "python3 -m pytest tests/test_small.py -q",
+    "uv run pytest tests/test_small.py -q",
+    # The override bypasses only the validation category, including the
+    # full-suite pytest wrappers.
+    "FULL_VALIDATION=1 python -m pytest",
+    "FULL_VALIDATION=1 python3 -m pytest",
+    "FULL_VALIDATION=1 uv run pytest",
 ]
 
 # Commands the hook must block (exit 2). These strings are payload data only.
@@ -54,6 +64,41 @@ BLOCKED_COMMANDS = [
     "FULL_VALIDATION=1 npm install lodash",
     "FULL_VALIDATION=1 docker compose up -d",
     "FULL_VALIDATION=1 rm -rf build",
+    # Multiline commands are unclassifiable and fail closed.
+    "echo ok\nrm -rf build",
+    "echo ok\nnpm install lodash",
+    "echo ok\npytest",
+    # Obvious shell control / compound-command constructs fail closed.
+    'eval "rm -rf build"',
+    "{ rm -rf build; }",
+    "if true; then rm -rf build; fi",
+    # Implicit package execution and installation paths.
+    "npx prettier --write .",
+    "npm exec --yes prettier -- --write .",
+    "pnpm dlx prettier --write .",
+    "yarn dlx prettier --write .",
+    "uvx ruff check .",
+    "pipx install black",
+    "cargo install cargo-watch",
+    "go install example.com/tool@latest",
+    # Common pytest wrappers, unscoped full runs.
+    "python -m pytest",
+    "python3 -m pytest",
+    "uv run pytest",
+]
+
+# The override bypasses only the validation category; it must never bypass the
+# package or unclassifiable categories. These strings are payload data only.
+OVERRIDE_STILL_BLOCKED_COMMANDS = [
+    # Package / implicit-execution paths.
+    "FULL_VALIDATION=1 npx prettier --write .",
+    "FULL_VALIDATION=1 uvx ruff check .",
+    "FULL_VALIDATION=1 pipx install black",
+    "FULL_VALIDATION=1 cargo install cargo-watch",
+    "FULL_VALIDATION=1 go install example.com/tool@latest",
+    # Unclassifiable: shell control and multiline.
+    'FULL_VALIDATION=1 eval "rm -rf build"',
+    "FULL_VALIDATION=1 echo ok\npytest",
 ]
 
 
@@ -103,6 +148,19 @@ class TestBlockedCommands(unittest.TestCase):
                     result.stderr.strip(),
                     msg="blocked command must emit a concise reason on stderr",
                 )
+
+
+class TestOverrideDoesNotBypass(unittest.TestCase):
+    def test_override_does_not_bypass_package_or_unclassifiable(self):
+        for command in OVERRIDE_STILL_BLOCKED_COMMANDS:
+            with self.subTest(command=command):
+                result = run_hook(bash_payload(command))
+                self.assertEqual(
+                    result.returncode,
+                    BLOCKED,
+                    msg=f"expected block (2); stderr={result.stderr!r}",
+                )
+                self.assertTrue(result.stderr.strip())
 
 
 class TestStructuredInput(unittest.TestCase):

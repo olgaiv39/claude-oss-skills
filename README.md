@@ -181,7 +181,8 @@ environment variable applies to every command the hook sees while it is set. A
 later occurrence such as `echo FULL_VALIDATION=1 && npm test` does not activate
 the override
 
-Blocks (without override): unscoped `pytest` / `npm test` / `pnpm test` /
+Blocks (without override): unscoped `pytest` (including the `python -m pytest`,
+`python3 -m pytest`, and `uv run pytest` wrappers) / `npm test` / `pnpm test` /
 `yarn test`, `cargo test --workspace`, broad workspace builds,
 `docker compose up --build`, starting all Compose services, recognized common
 package-install and dependency-modifying commands, explicit watch mode,
@@ -196,11 +197,15 @@ allowed
 
 Recognized package managers: `npm`, `pnpm`, `yarn`, `pip` / `pip3` (including
 `python -m pip`, even after interpreter options such as `-I`, `-S`, or
-`-X dev`), `cargo add`, `apt` / `apt-get`, `brew`, `gem`, `go get`, `uv`
-(`add`, `sync`, `pip install`, `tool install`), `poetry` (`add`, `install`,
-`update`), and `bun` (`install`, `add`, `i`). Ordinary `uv run`, `poetry run`,
-and `bun run` are not treated as installs. Unusual or unsupported package
-managers may not be detected, because the hook is advisory
+`-X dev`), `cargo` (`add`, `install`), `apt` / `apt-get`, `brew`, `gem`,
+`go` (`get`, `install`), `uv` (`add`, `sync`, `pip install`, `tool install`),
+`poetry` (`add`, `install`, `update`), and `bun` (`install`, `add`, `i`).
+Implicit package execution and installation runners are also treated as
+dependency-modifying activity and blocked (even with override): `npx`,
+`npm exec`, `pnpm dlx`, `yarn dlx`, `uvx`, and `pipx install` / `pipx run`.
+Ordinary `uv run`, `poetry run`, and `bun run` are not treated as installs.
+Unusual or unsupported package managers may not be detected, because the hook
+is advisory
 
 Raw-device write coverage includes paths under `/dev/sd`, `/dev/disk`,
 `/dev/nvme`, and `/dev/mmcblk`, for `mkfs`, `dd` (`of=/dev/...`), a `cp` / `mv`
@@ -238,6 +243,21 @@ values are ignored metadata and never expanded. Only a literal leading
 `FULL_VALIDATION=1` on the original command (or the environment variable)
 activates the override, so `env FULL_VALIDATION=1 npm test` and a later
 `CI=1 FULL_VALIDATION=1 npm test` do not
+
+The `python -m pytest`, `python3 -m pytest`, and `uv run pytest` wrappers follow
+the same scoped-versus-full pytest policy: an unscoped full run is blocked
+(and, being validation, may be bypassed by the override), while a targeted run
+such as `python3 -m pytest tests/test_small.py -q` is allowed. This is a narrow
+wrapper match, not general `python` or `uv run` interpretation
+
+Literal multiline commands (any embedded newline or carriage return in
+`tool_input.command`) fail closed as unclassifiable; run one directly
+classifiable command at a time. After tokenization and wrapper normalization, a
+segment that begins with an obvious shell control or compound-command token
+(`eval`, `{`, `if`/`then`/`elif`/`else`/`fi`, `for`/`while`/`until`,
+`case`/`esac`, `do`/`done`, `select`, `function`) also fails closed. Neither
+category is bypassed by the override, and this is a conservative guard, not a
+recursive shell parser
 
 Git global options before the subcommand are recognized, so
 `git -C repo clean -fdx` and `git --git-dir=.git reset --hard` are still seen
