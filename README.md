@@ -203,9 +203,15 @@ Recognized package managers: `npm`, `pnpm`, `yarn`, `pip` / `pip3` (including
 Implicit package execution and installation runners are also treated as
 dependency-modifying activity and blocked (even with override): `npx`,
 `npm exec`, `pnpm dlx`, `yarn dlx`, `uvx`, and `pipx install` / `pipx run`.
-Ordinary `uv run`, `poetry run`, and `bun run` are not treated as installs.
-Unusual or unsupported package managers may not be detected, because the hook
-is advisory
+These install and execution patterns are still recognized when common leading
+package-manager global options precede the subcommand, in both `--flag` and
+`--option value` forms (for example `pnpm --silent dlx ...`,
+`cargo --color always install ...`, `go -C . install ...`, and
+`uv --directory . tool install ...`); an option value is not mistaken for the
+subcommand. Ordinary `uv run`, `poetry run`, and `bun run` are not treated as
+installs. Only common option forms are modeled, so unusual or obfuscated
+option layouts and unsupported managers may still be missed; the hook is
+advisory, not a sandbox or a complete shell or CLI parser
 
 Raw-device write coverage includes paths under `/dev/sd`, `/dev/disk`,
 `/dev/nvme`, and `/dev/mmcblk`, for `mkfs`, `dd` (`of=/dev/...`), a `cp` / `mv`

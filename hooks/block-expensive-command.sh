@@ -592,6 +592,22 @@ PIP_VALUE_OPTS = {'--python', '--log', '--cache-dir', '--proxy', '--timeout',
 PIP_FLAG_OPTS = {'--isolated', '--require-virtualenv', '--user', '--no-input',
                  '-q', '--quiet', '-v', '--verbose'}
 
+# Leading global options for managers whose relevant subcommand (install /
+# exec / run / dlx / tool install) can appear after them. Only common options
+# are modeled; unusual forms may still be missed (advisory, not a full parser).
+PIPX_VALUE_OPTS = set()
+PIPX_FLAG_OPTS = {'-q', '--quiet', '-v', '--verbose', '--global'}
+
+CARGO_VALUE_OPTS = {'--color', '--config', '-Z'}
+CARGO_FLAG_OPTS = {'-q', '--quiet', '-v', '--verbose', '--frozen', '--locked',
+                   '--offline'}
+
+GO_VALUE_OPTS = {'-C'}
+GO_FLAG_OPTS = set()
+
+UV_VALUE_OPTS = {'--directory', '--project', '--color', '--cache-dir'}
+UV_FLAG_OPTS = {'-q', '--quiet', '-v', '--verbose', '--native-tls', '--offline'}
+
 PKG_MANAGERS = {
     'npm': (NPM_VALUE_OPTS, NPM_FLAG_OPTS, {'install', 'i', 'ci', 'add'}),
     'pnpm': (PNPM_VALUE_OPTS, PNPM_FLAG_OPTS, {'add', 'install', 'i'}),
@@ -601,11 +617,12 @@ PKG_MANAGERS = {
 }
 
 # Managers whose install detection does not need global-option normalization.
+# (go is handled in pkg_install_reason because `go -C dir install` puts a
+# value-taking global option before the subcommand.)
 GENERIC_INSTALL = {
     'apt': {'install'}, 'apt-get': {'install'},
     'brew': {'install'},
     'gem': {'install'},
-    'go': {'get', 'install'},
     'poetry': {'add', 'install', 'update'},
     'bun': {'install', 'add', 'i'},
 }
@@ -647,15 +664,36 @@ def pkg_install_reason(tokens):
     ALT_INSTALL = "run dependency-review before installing"
 
     # Implicit package execution / dependency runners fetch and run packages,
-    # so treat them like installation. Always blocked (not 'validation').
+    # so treat them like installation. Always blocked (not 'validation'). The
+    # relevant subcommand can sit behind common leading global options, so peel
+    # those with the per-manager option tables before matching it. For managers
+    # that also do plain installs (npm/pnpm/yarn) a non-runner subcommand falls
+    # through to the install classification below.
     if cmd in ('npx', 'uvx'):
         return ("package-install", "implicit package execution", ALT_INSTALL)
-    if cmd == 'pipx' and rest[:1] in (['install'], ['run']):
-        return ("package-install", "package installation", ALT_INSTALL)
-    if cmd == 'npm' and rest[:1] == ['exec']:
-        return ("package-install", "implicit package execution", ALT_INSTALL)
-    if cmd in ('pnpm', 'yarn') and rest[:1] == ['dlx']:
-        return ("package-install", "implicit package execution", ALT_INSTALL)
+    if cmd == 'npm':
+        sub, _a, err = skip_pkg_options(rest, NPM_VALUE_OPTS, NPM_FLAG_OPTS)
+        if err:
+            return ("unclassifiable", err, "run a single, directly classifiable command")
+        if sub == 'exec':
+            return ("package-install", "implicit package execution", ALT_INSTALL)
+    if cmd == 'pnpm':
+        sub, _a, err = skip_pkg_options(rest, PNPM_VALUE_OPTS, PNPM_FLAG_OPTS)
+        if err:
+            return ("unclassifiable", err, "run a single, directly classifiable command")
+        if sub == 'dlx':
+            return ("package-install", "implicit package execution", ALT_INSTALL)
+    if cmd == 'yarn':
+        sub, _a, err = skip_pkg_options(rest, YARN_VALUE_OPTS, YARN_FLAG_OPTS)
+        if err:
+            return ("unclassifiable", err, "run a single, directly classifiable command")
+        if sub == 'dlx':
+            return ("package-install", "implicit package execution", ALT_INSTALL)
+    if cmd == 'pipx':
+        sub, _a, err = skip_pkg_options(rest, PIPX_VALUE_OPTS, PIPX_FLAG_OPTS)
+        if not err and sub in ('install', 'run'):
+            return ("package-install", "package installation", ALT_INSTALL)
+        return None
 
     # `python -m pip ...` routes to pip; `python -c ...` is unclassifiable.
     # Conservatively skip supported interpreter options before `-m pip`, so
@@ -685,21 +723,34 @@ def pkg_install_reason(tokens):
         if not found:
             return None
 
-    # uv: block dependency-modifying subcommands; leave `uv run` alone.
+    # uv: block dependency-modifying subcommands; leave `uv run` alone. The
+    # subcommand can sit behind leading global options such as `--directory dir`.
     if cmd == 'uv':
-        if rest[:1] in (['add'], ['sync']):
+        sub, sargs, err = skip_pkg_options(rest, UV_VALUE_OPTS, UV_FLAG_OPTS)
+        if err:
+            return None
+        if sub in ('add', 'sync'):
             return ("package-install", "package installation", ALT_INSTALL)
-        if rest[:2] in (['pip', 'install'], ['tool', 'install']):
+        if sub in ('pip', 'tool') and sargs[:1] == ['install']:
             return ("package-install", "package installation", ALT_INSTALL)
         return None
 
-    # cargo accepts a +toolchain selector before the subcommand.
+    # cargo accepts a +toolchain selector, then common leading global options
+    # (e.g. `--color always`, `-q`) before the subcommand.
     if cmd == 'cargo':
         if rest[:1] and rest[0].startswith('+'):
             rest = rest[1:]
-        if rest[:1] in (['add'], ['install']):
+        sub, _a, err = skip_pkg_options(rest, CARGO_VALUE_OPTS, CARGO_FLAG_OPTS)
+        if not err and sub in ('add', 'install'):
             return ("package-install", "package installation",
                     "run dependency-review before installing")
+        return None
+
+    # go: `go install` / `go get` can sit behind a leading `-C dir` option.
+    if cmd == 'go':
+        sub, _a, err = skip_pkg_options(rest, GO_VALUE_OPTS, GO_FLAG_OPTS)
+        if not err and sub in ('get', 'install'):
+            return ("package-install", "package installation", ALT_INSTALL)
         return None
 
     if cmd not in PKG_MANAGERS:

@@ -43,6 +43,12 @@ ALLOWED_COMMANDS = [
     "FULL_VALIDATION=1 python -m pytest",
     "FULL_VALIDATION=1 python3 -m pytest",
     "FULL_VALIDATION=1 uv run pytest",
+    # Non-regression: normalizing leading global options must not turn an
+    # unrelated manager action, or an option value, into a package install.
+    "cargo build",
+    "pipx list",
+    "npm --prefix . run build",
+    "uv --directory . run pytest tests/test_small.py -q",
 ]
 
 # Commands the hook must block (exit 2). These strings are payload data only.
@@ -85,6 +91,20 @@ BLOCKED_COMMANDS = [
     "python -m pytest",
     "python3 -m pytest",
     "uv run pytest",
+    # Package-manager global options before the relevant subcommand must not
+    # bypass classification (flag options and `--option value` options).
+    "pnpm --silent dlx prettier --write .",
+    "pnpm --dir . dlx prettier --write .",
+    "yarn --silent dlx prettier --write .",
+    "yarn --cwd . dlx prettier --write .",
+    "pipx --verbose install black",
+    "pipx --global install black",
+    "pipx --verbose run black .",
+    "cargo --color always install cargo-watch",
+    "cargo -q install cargo-watch",
+    "go -C . install example.com/tool@latest",
+    "uv --directory . tool install ruff",
+    "npm --prefix . exec --yes prettier -- --write .",
 ]
 
 # The override bypasses only the validation category; it must never bypass the
@@ -99,6 +119,12 @@ OVERRIDE_STILL_BLOCKED_COMMANDS = [
     # Unclassifiable: shell control and multiline.
     'FULL_VALIDATION=1 eval "rm -rf build"',
     "FULL_VALIDATION=1 echo ok\npytest",
+    # Package paths behind global options stay blocked under the override.
+    "FULL_VALIDATION=1 pnpm --silent dlx prettier --write .",
+    "FULL_VALIDATION=1 pipx --verbose install black",
+    "FULL_VALIDATION=1 cargo --color always install cargo-watch",
+    "FULL_VALIDATION=1 go -C . install example.com/tool@latest",
+    "FULL_VALIDATION=1 npm --prefix . exec --yes prettier -- --write .",
 ]
 
 
